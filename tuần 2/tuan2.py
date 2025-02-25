@@ -1,55 +1,92 @@
-import nltk
+import re
+import numpy as np
 import matplotlib.pyplot as plt
-from nltk.util import ngrams
 from collections import Counter, defaultdict
-import random
 
-# Dữ liệu mẫu (có thể thay bằng tập dữ liệu lớn hơn)
-corpus = """Hôm nay trời đẹp. Hôm nay tôi đi học. Hôm nay tôi ăn sáng. Ngày mai tôi đi làm."""
+# Tiền xử lý văn bản: chuẩn hóa và tách từ
+# - Chuyển tất cả chữ thành chữ thường
+# - Loại bỏ các ký tự không phải chữ cái
+# - Tách câu thành danh sách từ
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-z\s]', '', text)  # Chỉ giữ lại chữ cái và khoảng trắng
+    return text.split()
 
-# Tiền xử lý dữ liệu
-def preprocess(text):
-    text = text.lower()  # Chuyển thành chữ thường
-    tokens = nltk.word_tokenize(text)  # Tách từ
-    return tokens
+# Mô hình n-gram đơn giản (Bigram)
+class BigramModel:
+    def __init__(self, corpus):
+        # Sử dụng defaultdict để lưu tần suất xuất hiện của từng cặp từ (bigram)
+        self.bigram_counts = defaultdict(Counter)
+        self.unigram_counts = Counter()
+        self.vocab = set()
+        self._train(corpus)
 
-tokens = preprocess(corpus)
-
-# Xây dựng mô hình n-gram
-n = 2  # Dùng mô hình bigram
-ngrams_list = list(ngrams(tokens, n))
-
-# Xây dựng bảng tần suất
-model = defaultdict(Counter)
-for w1, w2 in ngrams_list:
-    model[w1][w2] += 1
-
-# Vẽ biểu đồ tần suất
-def plot_frequency(model):
-    words = []
-    frequencies = []
+    def _train(self, corpus):
+        # Xử lý văn bản và cập nhật từ vựng
+        words = preprocess_text(corpus)
+        self.vocab.update(words)
+        
+        # Duyệt qua từng cặp từ liên tiếp để xây dựng thống kê
+        for i in range(len(words) - 1):
+            first_word = words[i]
+            second_word = words[i + 1]
+            
+            # Cập nhật số lần xuất hiện của từng bigram và unigram
+            self.bigram_counts[first_word][second_word] += 1
+            self.unigram_counts[first_word] += 1
     
-    for word, counter in model.items():
-        for next_word, freq in counter.items():
-            words.append(f"{word} {next_word}")
-            frequencies.append(freq)
+    def predict_next_word(self, word):
+        """Dự đoán từ tiếp theo có xác suất cao nhất dựa trên một từ."""
+        if word not in self.bigram_counts:
+            return "Không có dữ liệu cho từ này"
+        
+        # Tính xác suất của mỗi từ tiếp theo dựa trên tần suất xuất hiện của chúng
+        word_probs = {
+            next_word: count / self.unigram_counts[word]
+            for next_word, count in self.bigram_counts[word].items()
+        }
+        
+        # Chọn từ có xác suất cao nhất
+        return max(word_probs, key=word_probs.get)
     
-    plt.figure(figsize=(10, 5))
-    plt.barh(words, frequencies, color='skyblue')
-    plt.xlabel("Tần suất")
-    plt.ylabel("Bigram")
-    plt.title("Biểu đồ tần suất bigram")
-    plt.show()
+    def plot_word_distribution(self, word):
+        """Vẽ biểu đồ phân phối xác suất của các từ tiếp theo."""
+        if word not in self.bigram_counts:
+            print(f"Không có dữ liệu cho từ '{word}'.")
+            return
+        
+        # Tính xác suất của từng từ tiếp theo
+        word_probs = {
+            next_word: count / self.unigram_counts[word]
+            for next_word, count in self.bigram_counts[word].items()
+        }
+        
+        # Tách danh sách từ và xác suất tương ứng
+        words, probs = zip(*word_probs.items())
+        
+        # Vẽ biểu đồ
+        plt.figure(figsize=(10, 5))
+        plt.bar(words, probs, color='lightcoral')
+        plt.xlabel("Từ dự đoán")
+        plt.ylabel("Xác suất")
+        plt.title(f"Phân phối xác suất của từ tiếp theo sau '{word}'")
+        plt.xticks(rotation=45)
+        plt.show()
 
-plot_frequency(model)
+# Đọc dữ liệu từ file văn bản
+# - Mở file ở chế độ đọc với encoding UTF-8 để tránh lỗi ký tự
+with open("C:\\Users\\Admin\\OneDrive\\문서\\hoc python\\tuần 2\\test.txt", "r", encoding="utf-8") as file:
+    text_corpus = file.read()
 
-def predict_next_word(word):
-    if word in model:
-        return model[word].most_common(1)[0][0]  # Chọn từ có tần suất cao nhất
-    else:
-        return random.choice(tokens)  # Nếu không có từ tiếp theo, chọn ngẫu nhiên
+# Khởi tạo và huấn luyện mô hình
+model = BigramModel(text_corpus)
+
+# Nhập từ đầu vào từ người dùng
+test_word = input("Nhập từ đầu tiên: ")
 
 # Dự đoán từ tiếp theo
-test_word = "hôm"
-predicted_word = predict_next_word(test_word)
-print(f"Từ tiếp theo của '{test_word}' là '{predicted_word}'")
+predicted_word = model.predict_next_word(test_word)
+print(f"Từ tiếp theo dự đoán sau '{test_word}' là: {predicted_word}")
+
+# Hiển thị phân phối xác suất
+model.plot_word_distribution(test_word)
